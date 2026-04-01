@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY Gemfile Gemfile.lock ./
+COPY Gemfile ./
 RUN bundle install --without development test
 COPY . .
 
