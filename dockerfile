@@ -10,4 +10,4 @@ RUN bundle install --without development test
 COPY . .
 
 EXPOSE 3000
-CMD ["bundle", "exec", "rackup", "-o", "0.0.0.0", "-p", "3000"]
+CMD ["bundle", "exec", "puma", "-b", "tcp://0.0.0.0:3000"]
