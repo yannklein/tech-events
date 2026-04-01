@@ -1,0 +1,12 @@
+<h1>Create group</h1>
+
+<form action="/groups" method="post">
+  <input type="text" name="name">
+  <select name="platform">
+    <%= @platforms.map {|p| "<option value='#{p}'>#{p}</option>"}.join %>
+  </select>
+  <select name="city">
+    <%= @cities.map {|c| "<option value='#{c}'>#{c}</option>"}.join %>
+  </select>
+  <button type="submit">Create</button>
+</form>

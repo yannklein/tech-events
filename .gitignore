@@ -1,0 +1,5 @@
+development.sqlite3*
+db/development.sqlite3
+meetup_credentials.json
+curl_test.sh
+.env

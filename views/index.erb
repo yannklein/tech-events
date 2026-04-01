@@ -1,0 +1,24 @@
+<h1>Groups targeted</h1>
+<ul>
+  <% @groups.group_by {|g| g.city}.each do |city, groups| %>
+    <h2><%= city %></h2>
+    <% groups.each do |group| %>
+    <li><%= group.name %> (<%= group.platform %>)</li>
+    <% end %>
+  <% end %>
+</ul>
+
+<h1>Events</h1>
+<ul>
+  <% @events_per_city.each do |city, events| %>
+    <h2><%= city %></h2>
+    <% events.group_by { |ev| ev.created_at.to_date }.each do |date, events_per_day| %>
+    <li>
+      Created on <%=  date.to_date %>:
+      </li>
+      <% events_per_day.each do |event| %>
+        <a href='<%= event.url %>'><%= event.event_date %> <%= event.name %> (<%= event.tky_even_meetup.platform %>)</a><br>
+      <% end %>
+    <% end %>
+  <% end %>
+</ul>
