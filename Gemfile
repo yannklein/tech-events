@@ -1,6 +1,6 @@
 source 'https://rubygems.org'
 
-ruby '3.1.2'
+ruby '3.3.11'
 gem 'google-api-client'
 gem 'httparty'
 gem 'meetup_client'
@@ -17,11 +17,8 @@ gem 'sinatra-contrib'
 gem 'sinatra-cross_origin'
 gem 'watir'
 
-gem 'falcon', '~> 0.42.3'
 gem 'irb'
 gem 'puma', '~> 6.0'
-gem 'thin', '~> 1.8'
-gem 'webrick', '~> 1.7'
 
 gem 'tzinfo'
 
