@@ -1,7 +1,7 @@
-FROM ruby:3.1.2-slim
+FROM ruby:3.3-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev && \
+    build-essential libpq-dev libxml2-dev libxslt-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
