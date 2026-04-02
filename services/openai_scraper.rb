@@ -5,7 +5,7 @@ class OpenaiScraper
   def initialize(platform_name, base_url)
     @platform_name = platform_name
     @base_url = base_url
-    @groups = TkyEvenMeetup.where(platform: @platform_name) || []
+    @groups = Group.where(platform: @platform_name) || []
     @events = []
     @client = OpenAI::Client.new(
       access_token: ENV['OPENAI_API_KEY'],
@@ -71,7 +71,7 @@ class OpenaiScraper
     raw_events.map do |raw_event|
       {
         meetup_event_id: raw_event['meetup_event_id'],
-        tky_even_meetup: group,
+        group: group,
         name: "@#{raw_event['start_time']} | #{raw_event['name']}",
         venue: raw_event['venue'],
         event_date: raw_event['event_date'],
@@ -89,11 +89,11 @@ class OpenaiScraper
     event_created = 0
     @events.each do |event|
       puts "  Try to store event: #{event[:name]}, id: #{event[:meetup_event_id]}"
-      next unless TkyEvenEvent.where(meetup_event_id: event[:meetup_event_id]).empty?
+      next unless Event.where(meetup_event_id: event[:meetup_event_id]).empty?
 
       puts "  Store event: #{event[:name]}"
       event_created += 1
-      TkyEvenEvent.create(event)
+      Event.create(event)
     end
     puts "[#{@platform_name.upcase}: #{event_created} events stored in DB ✅]"
     puts ''

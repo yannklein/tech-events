@@ -42,14 +42,14 @@ CALENDAR_ID = 'lewagon.org_i5sv5pnr5htimao32tkb9a4jko@group.calendar.google.com'
 TIME_ZONE = 'Asia/Tokyo'.freeze
 
 get '/api/groups' do
-  groups = TkyEvenMeetup.all
+  groups = Group.all
   groups = groups.where(city: params[:city]) if params[:city]
   json groups
 end
 
 get '/api/events' do
-  events = TkyEvenEvent.where('event_date >= ?', Date.today.prev_month(2)).order(event_date: :asc)
-  events = events.joins(:tky_even_meetup).where(tky_even_meetup: { city: params[:city] }) if params[:city]
+  events = Event.where('event_date >= ?', Date.today.prev_month(2)).order(event_date: :asc)
+  events = events.joins(:group).where(group: { city: params[:city] }) if params[:city]
   json events
 end
 
@@ -64,8 +64,8 @@ get '/api' do
 end
 
 get '/' do
-  @groups = TkyEvenMeetup.all
-  @events_per_city = TkyEvenEvent.order(created_at: :desc).group_by { |ev| ev.tky_even_meetup.city }
+  @groups = Group.all
+  @events_per_city = Event.order(created_at: :desc).group_by { |ev| ev.group.city }
   p
   erb :index
 end
@@ -77,7 +77,7 @@ get '/groups/new' do
 end
 
 post '/groups' do
-  TkyEvenMeetup.create(name: params[:name], platform: params[:platform], city: params[:city])
+  Group.create(name: params[:name], platform: params[:platform], city: params[:city])
   redirect '/'
 end
 
@@ -106,7 +106,7 @@ def doorkeeper_api_fetch(group)
     location = event['event']['venue_name']
     {
       meetup_event_id: event['event']['id'].to_s,
-      tky_even_meetup: TkyEvenMeetup.find_by(name: group.name),
+      group: Group.find_by(name: group.name),
       name: "@#{DateTime.parse(event['event']['starts_at']).new_offset('+09:00').strftime('%k:%M')} | #{event['event']['title']}",
       venue: location && location != '' ? location : 'Remote or no venue info',
       event_date: Date.parse(event['event']['starts_at']).strftime('%F'),
@@ -153,7 +153,7 @@ def meetup_api_fetch(group)
       formatted_date = DateTime.parse(raw_event['dateTime']) rescue nil # rubocop:disable Style/RescueModifier
       {
         meetup_event_id: raw_event['id'],
-        tky_even_meetup: group,
+        group: group,
         name: "@#{formatted_date.strftime('%H:%M')} | #{raw_event['title']}",
         venue: raw_event['venue'].nil? ? 'Remote or no venue info' : raw_event['venue']['name'],
         event_date: formatted_date,

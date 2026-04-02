@@ -17,7 +17,7 @@
       Created on <%=  date.to_date %>:
       </li>
       <% events_per_day.each do |event| %>
-        <a href='<%= event.url %>'><%= event.event_date %> <%= event.name %> (<%= event.tky_even_meetup.platform %>)</a><br>
+        <a href='<%= event.url %>'><%= event.event_date %> <%= event.name %> (<%= event.group.platform %>)</a><br>
       <% end %>
     <% end %>
   <% end %>

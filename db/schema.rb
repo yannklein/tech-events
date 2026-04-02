@@ -11,8 +11,8 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[7.1].define(version: 2025_02_02_212619) do
-  create_table "tky_even_events", force: :cascade do |t|
-    t.integer "tky_even_meetup_id", null: false
+  create_table "events", force: :cascade do |t|
+    t.integer "group_id", null: false
     t.string "meetup_event_id"
     t.string "name"
     t.string "venue"
@@ -22,10 +22,10 @@ ActiveRecord::Schema[7.1].define(version: 2025_02_02_212619) do
     t.datetime "event_date"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["tky_even_meetup_id"], name: "index_tky_even_events_on_tky_even_meetup_id"
+    t.index ["group_id"], name: "index_events_on_group_id"
   end
 
-  create_table "tky_even_meetups", force: :cascade do |t|
+  create_table "groups", force: :cascade do |t|
     t.string "name"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
@@ -33,5 +33,5 @@ ActiveRecord::Schema[7.1].define(version: 2025_02_02_212619) do
     t.string "city"
   end
 
-  add_foreign_key "tky_even_events", "tky_even_meetups"
+  add_foreign_key "events", "groups"
 end

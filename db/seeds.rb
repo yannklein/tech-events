@@ -1,6 +1,6 @@
 puts 'Reset seeds'
-TkyEvenEvent.destroy_all
-TkyEvenMeetup.destroy_all
+Event.destroy_all
+Group.destroy_all
 puts 'Seeds reset'
 
 puts 'Creating Tokyo meetups'
@@ -23,13 +23,13 @@ jp_meetup_names = %w[
 jp_dk_names = %w[trbmeetup uxtalktokyo rubyassociation]
 
 jp_meetup_names.each do |name|
-  TkyEvenMeetup.create(name:, platform: 'meetup', city: 'tokyo')
+  Group.create(name:, platform: 'meetup', city: 'tokyo')
   puts "Meetup group named #{name} created"
 end
 puts 'Meetups groups created'
 
 jp_dk_names.each do |name|
-  TkyEvenMeetup.create(name:, platform: 'doorkeeper', city: 'tokyo')
+  Group.create(name:, platform: 'doorkeeper', city: 'tokyo')
   puts "Doorkeeper group named #{name} created"
 end
 puts 'Doorkeeper groups created'
@@ -50,7 +50,7 @@ bcn_meetup_names = %w[
 ]
 
 bcn_meetup_names.each do |name|
-  TkyEvenMeetup.create(name:, platform: 'meetup', city: 'barcelona')
+  Group.create(name:, platform: 'meetup', city: 'barcelona')
   puts "Meetup group named #{name} created"
 end
 
@@ -64,12 +64,12 @@ tky_luma_meetup_names = %w[
 ]
 
 luma_meetup_names.each do |name|
-  TkyEvenMeetup.create(name:, platform: 'luma', city: 'barcelona')
+  Group.create(name:, platform: 'luma', city: 'barcelona')
   puts "Meetup group named #{name} created (bcn)"
 end
 
 tky_luma_meetup_names.each do |name|
-  TkyEvenMeetup.create(name:, platform: 'luma', city: 'tokyo')
+  Group.create(name:, platform: 'luma', city: 'tokyo')
   puts "Meetup group named #{name} created (tky)"
 end
 
