@@ -11,6 +11,7 @@ require 'nokogiri'
 require 'httparty'
 require 'watir'
 require 'tzinfo'
+require 'byebug'
 
 require 'dotenv/load' if development?
 

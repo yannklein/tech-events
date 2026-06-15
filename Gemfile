@@ -26,8 +26,10 @@ gem 'ruby-openai'
 
 gem 'dotenv', groups: [:development, :test]
 
+gem 'byebug'
+
 group :development do
-  gem 'sqlite3', '~> 1.4'
+  gem 'sqlite3', '~> 2.1'
 end
 
 group :production do
