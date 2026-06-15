@@ -20,7 +20,7 @@ class OpenaiScraper
       puts "  Scraping events for: #{group.name}"
       # p group.name, @base_url
       raw_html = get_raw_html(group.name, @base_url)
-      # p raw_htm÷l[0..1000]
+      # p raw_html[0..1000]
       @events += openai_scrape(group, raw_html)
     end
     puts "[#{@platform_name.upcase}: #{@events.size} events scraped (some may already be stored) ✅]"
@@ -154,7 +154,7 @@ class OpenaiScraper
     raw_html = browser.html.force_encoding("UTF-8")
 
     if @platform_name == 'luma'
-      extracted = raw_html.scan(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/m).flatten.first
+      extracted = raw_html.scan(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/m).flatten.join
       raw_html = extracted || raw_html
     elsif @platform_name == 'eventbrite'
       match = raw_html.match(/window\.__SERVER_DATA__\s*=\s*(\{.*?\});/m)
