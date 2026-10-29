@@ -22,7 +22,7 @@ gem 'puma', '~> 6.0'
 
 gem 'tzinfo'
 
-gem 'ruby-openai'
+gem 'ruby_llm'
 
 gem 'dotenv', groups: [:development, :test]
 

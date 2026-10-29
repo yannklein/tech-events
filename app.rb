@@ -12,6 +12,7 @@ require 'httparty'
 require 'watir'
 require 'tzinfo'
 require 'byebug'
+require 'ruby_llm'
 
 require 'dotenv/load' if development?
 
@@ -29,7 +30,7 @@ require 'sinatra/cross_origin'
 require_relative 'config/application'
 
 require_relative 'services/api_fetcher'
-require_relative 'services/openai_scraper'
+require_relative 'services/ai_scraper'
 
 configure do
   enable :cross_origin
@@ -285,7 +286,7 @@ def fetch_event
   # ApiFetcher.new('meetup')
   #           .fetch_events(&method(:meetup_api_fetch))
   #           .store_events
-  OpenaiScraper.new('meetup', 'https://www.meetup.com/')
+  AiScraper.new('meetup', 'https://www.meetup.com/')
               .fetch_events
               .store_events
 
@@ -293,11 +294,11 @@ def fetch_event
             .fetch_events(&method(:doorkeeper_api_fetch))
             .store_events
 
-  OpenaiScraper.new('eventbrite', 'https://www.eventbrite.com/o/')
+  AiScraper.new('eventbrite', 'https://www.eventbrite.com/o/')
               .fetch_events
               .store_events
 
-  OpenaiScraper.new('luma', 'https://lu.ma/')
+  AiScraper.new('luma', 'https://lu.ma/')
               .fetch_events
               .store_events
 

@@ -1,16 +1,41 @@
-require "ruby/openai"
+require 'ruby_llm'
 require 'json'
 
-class OpenaiScraper
+class AiScraper
+  # Claude Haiku 5.5 is not in ruby_llm's model registry yet, hence assume_model_exists below.
+  MODEL = ENV.fetch('ANTHROPIC_MODEL', 'claude-haiku-5-5')
+  MAX_INPUT_LENGTH = 100_000
+
+  EVENTS_SCHEMA = {
+    type: 'object',
+    properties: {
+      events: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            meetup_event_id: { type: 'string', description: 'Unique identifier of the event on the platform (letters and numbers only)' },
+            name: { type: 'string', description: 'Name of the event' },
+            venue: { type: 'string', description: "Venue of the event, or 'Remote or no venue info' if unavailable" },
+            event_date: { type: 'string', description: 'Start time of the event in ISO 8601 format' },
+            start_time: { type: 'string', description: 'Local start time of the event in format HH:MM' },
+            url: { type: 'string', description: 'URL of the event on the platform' },
+            description: { type: 'string', description: 'Description of the event' }
+          },
+          required: %w[meetup_event_id name venue event_date start_time url description],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ['events'],
+    additionalProperties: false
+  }.freeze
+
   def initialize(platform_name, base_url)
     @platform_name = platform_name
     @base_url = base_url
     @groups = Group.where(platform: @platform_name) || []
     @events = []
-    @client = OpenAI::Client.new(
-      access_token: ENV['OPENAI_API_KEY'],
-      request_timeout: 300 # 5 minutes for large payloads
-    )
   end
 
   def fetch_events
@@ -18,10 +43,8 @@ class OpenaiScraper
     @groups.each do |group|
       sleep 1
       puts "  Scraping events for: #{group.name}"
-      # p group.name, @base_url
       raw_html = get_raw_html(group.name, @base_url)
-      # p raw_html[0..1000]
-      @events += openai_scrape(group, raw_html)
+      @events += llm_scrape(group, raw_html)
     end
     puts "[#{@platform_name.upcase}: #{@events.size} events scraped (some may already be stored) ✅]"
     self
@@ -30,45 +53,28 @@ class OpenaiScraper
     self
   end
 
-  def openai_scrape(group, raw_html)
-    # truncated_html = truncate_html(raw_html)
-    @instructions = <<~INSTRUCTIONS
-      Below is the raw HTML of the page of the #{group.name} group on the #{@platform_name} event platform. Look for all the future events of the group.
-      Your output should be a JSON array of objects, each representing an event. 
-      If you don't find any event, your output should be a JSON empty array.
-      Your output should only contain the JSON array mentioned, nothing else.
-      Your response MUST NOT contain markdown code blocks (like ```json) — just the raw JSON array.
-      Each object should contain the following fields:
-      - meetup_event_id: The unique identifier for the event on the #{@platform_name} platform (composed of letters and numbers only)
-      - name: The name of the event
-      - venue: The venue of the event (if available), if not the value should be 'Remote or no venue info'
-      - event_date: The start time of the event in ISO 8601 format
-      - start_time: The local start time of the event in format HH:MM
-      - url: The URL of the event on the #{@platform_name} platform
-      - description: The description of the event
-
-      [The raw HTML]
-
-      #{raw_html}
-    INSTRUCTIONS
-
-    if @instructions.length > 100_000
-      puts "    ⚠️ Instruction length too long (#{@instructions.length}). Skipping group: #{group.name}"
+  def llm_scrape(group, raw_html)
+    if raw_html.strip.empty?
+      puts "    ℹ️ No event data found on the page. Skipping LLM call for group: #{group.name}"
       return []
     end
 
-    puts "    ℹ️ Instruction length: #{@instructions.length}"
-    response = @client.chat(
-      parameters: {
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'user', content: @instructions }
-        ]
-      }
-    )
-    raw_events_json = response.dig('choices', 0, 'message', 'content')
-    raw_events = JSON.parse(raw_events_json)
-    raw_events.map do |raw_event|
+    if raw_html.length > MAX_INPUT_LENGTH
+      puts "    ⚠️ Page data too long (#{raw_html.length}). Skipping group: #{group.name}"
+      return []
+    end
+
+    puts "    ℹ️ Page data length: #{raw_html.length}"
+    response = new_chat.ask(<<~PROMPT)
+      Today is #{Date.today.iso8601}. Below is the page data of the #{group.name} group on the #{@platform_name} event platform.
+
+      <page_data>
+      #{raw_html}
+      </page_data>
+    PROMPT
+    puts "    ℹ️ Tokens: #{response.tokens.input} in / #{response.tokens.output} out"
+
+    response.parsed.fetch('events', []).map do |raw_event|
       {
         meetup_event_id: raw_event['meetup_event_id'],
         group: group,
@@ -76,11 +82,14 @@ class OpenaiScraper
         venue: raw_event['venue'],
         event_date: raw_event['event_date'],
         url: raw_event['url'],
-        description: "<p><a href='#{raw_event['url']}'>Open the event page</a></p>#{raw_event['description']}" || ''
+        description: "<p><a href='#{raw_event['url']}'>Open the event page</a></p>#{raw_event['description']}"
       }
     end
   rescue JSON::ParserError => e
     puts "    ⚠️ Failed to parse JSON response for group: #{group.name}. Error: #{e.message}"
+    []
+  rescue RubyLLM::Error => e
+    puts "    ⚠️ LLM call failed for group: #{group.name}. #{e.class}: #{e.message}"
     []
   end
 
@@ -99,7 +108,24 @@ class OpenaiScraper
     puts ''
   end
 
-  private 
+  private
+
+  def new_chat
+    RubyLLM.chat(model: MODEL, provider: :anthropic, assume_model_exists: true)
+           .with_instructions(<<~INSTRUCTIONS)
+             You extract events from the page data of a group on the #{@platform_name} event platform.
+             Return all the future events of the group. If you don't find any, return an empty events array.
+             For each event:
+             - meetup_event_id: the unique identifier of the event on the #{@platform_name} platform (letters and numbers only)
+             - venue: the venue of the event, or 'Remote or no venue info' if not available
+             - event_date: the start time of the event in ISO 8601 format
+             - start_time: the local start time of the event in format HH:MM
+             - url: the URL of the event on the #{@platform_name} platform
+           INSTRUCTIONS
+           .with_schema(EVENTS_SCHEMA)
+           .with_thinking(effort: :low)
+           .with_max_output_tokens(16_000)
+  end
 
   def slim_json(data, keep_keys: %w[name title date time url venue description id eventUrl])
     case data
@@ -201,7 +227,7 @@ class OpenaiScraper
   end
 end
 
-# OpenaiScraper
+# AiScraper
 #   .new('meetup', 'https://www.meetup.com/')
 #   .fetch_events
 #   .store_events

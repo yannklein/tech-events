@@ -19,6 +19,11 @@ configure :production do
   )
 end
 
+RubyLLM.configure do |config|
+  config.anthropic_api_key = ENV['ANTHROPIC_API_KEY']
+  config.request_timeout = 300 # 5 minutes for large payloads
+end
+
 # Set a logger so that you can view the SQL actually performed by ActiveRecord
 logger = Logger.new(STDOUT)
 logger.formatter = proc do |severity, datetime, progname, msg|
