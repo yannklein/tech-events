@@ -1,10 +1,12 @@
 require 'ruby_llm'
 require 'json'
+require 'digest'
 
 class AiScraper
   # Claude Haiku 5.5 is not in ruby_llm's model registry yet, hence assume_model_exists below.
   MODEL = ENV.fetch('ANTHROPIC_MODEL', 'claude-haiku-5-5')
   MAX_INPUT_LENGTH = 100_000
+  SKIPPED_MEETUP_STATUSES = %w[PAST CANCELLED].freeze
 
   EVENTS_SCHEMA = {
     type: 'object',
@@ -36,6 +38,7 @@ class AiScraper
     @base_url = base_url
     @groups = Group.where(platform: @platform_name) || []
     @events = []
+    @page_digests = {} # group => digest of the page data scraped this run
   end
 
   def fetch_events
@@ -64,6 +67,12 @@ class AiScraper
       return []
     end
 
+    digest = Digest::SHA256.hexdigest(raw_html)
+    if digest == group.page_digest
+      puts "    ℹ️ Page data unchanged since last run. Skipping LLM call for group: #{group.name}"
+      return []
+    end
+
     puts "    ℹ️ Page data length: #{raw_html.length}"
     response = new_chat.ask(<<~PROMPT)
       Today is #{Date.today.iso8601}. Below is the page data of the #{group.name} group on the #{@platform_name} event platform.
@@ -74,7 +83,7 @@ class AiScraper
     PROMPT
     puts "    ℹ️ Tokens: #{response.tokens.input} in / #{response.tokens.output} out"
 
-    response.parsed.fetch('events', []).map do |raw_event|
+    events = response.parsed.fetch('events', []).map do |raw_event|
       {
         meetup_event_id: raw_event['meetup_event_id'],
         group: group,
@@ -85,6 +94,8 @@ class AiScraper
         description: "<p><a href='#{raw_event['url']}'>Open the event page</a></p>#{raw_event['description']}"
       }
     end
+    @page_digests[group] = digest
+    events
   rescue JSON::ParserError => e
     puts "    ⚠️ Failed to parse JSON response for group: #{group.name}. Error: #{e.message}"
     []
@@ -104,6 +115,8 @@ class AiScraper
       event_created += 1
       Event.create(event)
     end
+    # Only remember the page once its events are stored, so a failed run gets retried next time
+    @page_digests.each { |group, digest| group.update(page_digest: digest) }
     puts "[#{@platform_name.upcase}: #{event_created} events stored in DB ✅]"
     puts ''
   end
@@ -138,6 +151,61 @@ class AiScraper
     else
       data
     end
+  end
+
+  # Keeps only the upcoming, non-cancelled events of Meetup's Apollo cache, with their venue inlined.
+  # Members, photos, RSVPs and query keys (which embed the current timestamp) are dropped:
+  # they change daily without the events changing, and would defeat the page digest.
+  def meetup_upcoming_events(apollo_state)
+    events = apollo_state.filter_map do |key, event|
+      next unless key.start_with?('Event:') && !SKIPPED_MEETUP_STATUSES.include?(event['status'])
+
+      venue = apollo_state[event.dig('venue', '__ref')] || {}
+      {
+        id: event['id'],
+        title: event['title'],
+        url: event['eventUrl'],
+        date_time: event['dateTime'],
+        end_time: event['endTime'],
+        status: event['status'],
+        online: event['isOnline'],
+        venue: venue.slice('name', 'address', 'city'),
+        description: event['description']
+      }
+    end
+    events.empty? ? '' : events.sort_by { |e| [e[:date_time].to_s, e[:id].to_s] }.to_json
+  end
+
+  # Keeps only the non-cancelled events of the calendar's schema.org event list.
+  # Images, organizers, ticket offers and coordinates are dropped: they change without
+  # the events changing (e.g. tickets selling out), and would defeat the page digest.
+  def luma_upcoming_events(ld_json_blocks)
+    items = ld_json_blocks.flat_map do |block|
+      data = JSON.parse(block)
+      data['@type'] == 'ItemList' ? [data['itemListElement']].flatten.compact : []
+    rescue JSON::ParserError
+      []
+    end
+
+    events = items.filter_map do |item|
+      event = item['item'] || item
+      next unless event['@type'] == 'Event' && !event['eventStatus'].to_s.end_with?('EventCancelled')
+
+      location = [event['location']].flatten.first || {}
+      address = location['address'].is_a?(Hash) ? location['address'] : {}
+      {
+        id: event['url'].to_s.split('/').last,
+        name: event['name'],
+        url: event['url'],
+        start_date: event['startDate'],
+        end_date: event['endDate'],
+        attendance: event['eventAttendanceMode'].to_s.split('/').last,
+        venue: location['name'],
+        address: address.values_at('streetAddress', 'addressLocality', 'addressRegion', 'addressCountry')
+                        .compact.reject(&:empty?).join(', ')
+      }
+    end
+    events.empty? ? '' : events.sort_by { |e| [e[:start_date].to_s, e[:id].to_s] }.to_json
   end
 
   def clean_html(html)
@@ -180,8 +248,8 @@ class AiScraper
     raw_html = browser.html.force_encoding("UTF-8")
 
     if @platform_name == 'luma'
-      extracted = raw_html.scan(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/m).flatten.join
-      raw_html = extracted || raw_html
+      ld_json_blocks = raw_html.scan(/<script[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/m).flatten
+      raw_html = luma_upcoming_events(ld_json_blocks)
     elsif @platform_name == 'eventbrite'
       match = raw_html.match(/window\.__SERVER_DATA__\s*=\s*(\{.*?\});/m)
       if match
@@ -194,11 +262,12 @@ class AiScraper
       match = raw_html.match(/<script id="__NEXT_DATA__" type="application\/json">(.*?)<\/script>/m)
       if match
         data = JSON.parse(match[1])
-        # Extract only the events data from the nested structure
-        events_data = data.dig('props', 'pageProps', 'events') ||
-                      data.dig('props', 'pageProps', '__APOLLO_STATE__')
-        # Slim down the JSON to keep only event-relevant fields
-        raw_html = slim_json(events_data).to_json
+        events_data = data.dig('props', 'pageProps', 'events')
+        raw_html = if events_data
+                     slim_json(events_data).to_json
+                   else
+                     meetup_upcoming_events(data.dig('props', 'pageProps', '__APOLLO_STATE__') || {})
+                   end
       else
         raw_html = ""
       end
